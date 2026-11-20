@@ -32,8 +32,8 @@ body {
   background:
     radial-gradient(ellipse 70% 55% at 22% 30%, oklch(0.24 0.04 225 / 0.55), transparent 70%),
     linear-gradient(180deg, var(--fl-void-2), var(--fl-void) 40%);
-  padding: 20px clamp(18px, 3.5vw, 44px) 48px !important;
 }
+.workspace-leaf-content .view-content.fl-hud { padding: 20px clamp(18px, 3.5vw, 44px) 48px; }
 .fl-hud ::selection { background: var(--fl-ice-soft); }
 
 .fl-top { display: flex; justify-content: space-between; align-items: flex-end; max-width: 1280px; margin: 0 auto 10px; }

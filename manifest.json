@@ -1,7 +1,7 @@
 {
   "id": "faceless",
   "name": "Faceless",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "minAppVersion": "1.7.2",
   "description": "A home page in the style of a sci-fi HUD that speaks: where you left off, idle projects, a note to revisit, overdue tasks to settle, deadlines and a weekly review. Phosphor icons in the file explorer.",
   "author": "precieuxfassinou",
