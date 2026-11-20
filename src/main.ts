@@ -1,4 +1,4 @@
-import { App, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder, WorkspaceLeaf, normalizePath } from 'obsidian';
+import { App, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder, WorkspaceLeaf, normalizePath, type SettingDefinitionItem } from 'obsidian';
 import { HomeView, HOME_VIEW } from './home';
 import { IconManager, type IconOverride } from './icons';
 import { registerPhosphor } from './phosphor';
@@ -369,6 +369,113 @@ const L = () => lang() === 'fr' ? {
 class FacelessSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: FacelessPlugin) { super(app, plugin); }
 
+  // ---- Declarative settings (Obsidian 1.13+: searchable). display() below stays for older versions. ----
+
+  private refresh() { (this as unknown as { update?: () => void }).update?.(); }
+
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    const s = this.plugin.settings;
+    const l = L();
+    const natural = this.plugin.naturalVoice();
+    const days = (v: number) => (Number.isFinite(v) && v > 0 ? undefined : l.days);
+    const weekdays: Record<string, string> = {};
+    l.weekdays.forEach((n, i) => { weekdays[String(i + 1)] = n; });
+    const voices: Record<string, string> = { '': l.sysVoiceAuto };
+    for (const v of window.speechSynthesis?.getVoices() ?? []) voices[v.name] = `${v.name} (${v.lang})`;
+    return [
+      { type: 'group', heading: l.home, items: [
+        { name: l.language, desc: l.languageDesc, control: { type: 'dropdown', key: 'language', options: { auto: l.auto, fr: 'Français', en: 'English' } } },
+        { name: l.startup, desc: l.startupDesc, control: { type: 'toggle', key: 'openOnStartup' } },
+        { name: l.journal, desc: l.journalDesc, control: { type: 'folder', key: 'briefingFolder' } },
+        { name: l.projects, desc: l.projectsDesc, control: { type: 'folder', key: 'projectsFolder' } },
+        { name: l.reprise, desc: l.repriseDesc, control: { type: 'text', key: 'repriseHeading', placeholder: DEFAULTS.repriseHeading } },
+        { name: l.instructions, desc: l.instructionsDesc, control: { type: 'file', key: 'instructionsFile' } },
+        { name: l.shortcuts, desc: l.shortcutsDesc, control: { type: 'textarea', key: 'shortcuts', rows: 3 } },
+        { name: l.reviewDay, control: { type: 'dropdown', key: 'reviewWeekday', options: weekdays } },
+        { name: l.deadlines, desc: l.deadlinesDesc, control: { type: 'textarea', key: 'deadlines', rows: 3 } },
+      ] },
+      { type: 'group', heading: l.thresholds, items: [
+        { name: l.sleep, desc: l.sleepDesc, control: { type: 'number', key: 'sleepDays', min: 1, step: 1, validate: days } },
+        { name: l.dead, desc: l.deadDesc, control: { type: 'number', key: 'deadDays', min: 1, step: 1, validate: days } },
+        { name: l.resurface, desc: l.days, control: { type: 'number', key: 'resurfaceMinDays', min: 1, step: 1, validate: days } },
+        { name: l.taskEx, desc: l.taskExDesc, control: { type: 'textarea', key: 'taskExcludeFolders', rows: 3 } },
+        { name: l.resEx, desc: l.onePerLine, control: { type: 'textarea', key: 'resurfaceExcludeFolders', rows: 3 } },
+        { name: l.orphEx, desc: l.onePerLine, control: { type: 'textarea', key: 'orphanExcludeFolders', rows: 3 } },
+      ] },
+      { type: 'group', heading: l.look, items: [
+        { name: l.theme, desc: l.themeDesc, control: { type: 'toggle', key: 'themeAll' } },
+      ] },
+      { type: 'group', heading: l.claudian, visible: () => this.plugin.hasClaudian(), items: [
+        { name: l.skin, desc: l.skinDesc, control: { type: 'toggle', key: 'skinClaudian' } },
+        { name: l.autoSend, control: { type: 'toggle', key: 'autoSend' } },
+        { name: l.prefix, desc: l.prefixDesc, control: { type: 'textarea', key: 'askPrefix', rows: 3 } },
+      ] },
+      { type: 'group', heading: l.voice, items: [
+        { name: l.engine, desc: natural ? (natural.ready() ? l.naturalOk : l.naturalNotReady) : l.engineDesc,
+          control: { type: 'dropdown', key: 'voiceEngine', options: { natural: l.natural, system: l.piperSys } } },
+        { name: l.test, render: setting => { setting.addButton(b => b.setButtonText(l.test).onClick(() => void this.plugin.speak(t().testPhrase))); } },
+        { name: l.sysVoice, control: { type: 'dropdown', key: 'voiceName', options: voices } },
+        { name: l.rate, control: { type: 'slider', key: 'speechRate', min: 0.7, max: 1.5, step: 0.05 } },
+      ] },
+      { type: 'group', heading: l.icons, items: [
+        { name: l.colorNames, control: { type: 'toggle', key: 'colorFolderNames' } },
+        { name: l.manual, desc: l.manualDesc(Object.keys(s.iconOverrides).length), render: setting => {
+          setting.addButton(b => b.setButtonText(l.resetIcons).onClick(async () => {
+            s.iconOverrides = {}; await this.plugin.saveSettings(); this.plugin.icons.applyAll(); this.refresh();
+          }));
+        } },
+        { name: l.reread, desc: l.rereadDesc(Object.keys(s.resurfaced).length), render: setting => {
+          setting.addButton(b => b.setButtonText(l.clear).onClick(async () => {
+            s.resurfaced = {}; await this.plugin.saveSettings(); this.refresh();
+          }));
+        } },
+      ] },
+    ];
+  }
+
+  getControlValue(key: string): unknown {
+    const s = this.plugin.settings;
+    switch (key) {
+      case 'shortcuts': case 'taskExcludeFolders': case 'resurfaceExcludeFolders': case 'orphanExcludeFolders':
+        return s[key].join('\n');
+      case 'deadlines': return s.deadlines.map(d => `${d.label} | ${d.date}`).join('\n');
+      case 'reviewWeekday': return String(s.reviewWeekday);
+      default: return (s as unknown as Record<string, unknown>)[key];
+    }
+  }
+
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    const s = this.plugin.settings;
+    const str = typeof value === 'string' ? value : '';
+    const lines = (v: string) => v.split('\n').map(x => x.trim()).filter(Boolean);
+    switch (key) {
+      case 'shortcuts': case 'taskExcludeFolders': case 'resurfaceExcludeFolders': case 'orphanExcludeFolders':
+        s[key] = lines(str); break;
+      case 'deadlines':
+        s.deadlines = lines(str).map(x => x.split('|').map(y => y.trim()))
+          .filter(p => p.length === 2 && p[0] && /^\d{4}-\d{2}(-\d{2})?$/.test(p[1])).map(p => ({ label: p[0], date: p[1] }));
+        break;
+      case 'reviewWeekday': s.reviewWeekday = Number(str) || 1; break;
+      case 'repriseHeading': s.repriseHeading = str.trim() || DEFAULTS.repriseHeading; break;
+      case 'briefingFolder': case 'projectsFolder': case 'instructionsFile': case 'askPrefix': case 'voiceName':
+        s[key] = key === 'askPrefix' ? str : str.trim(); break;
+      case 'language': s.language = str as FacelessSettings['language']; break;
+      case 'voiceEngine': s.voiceEngine = str as FacelessSettings['voiceEngine']; break;
+      case 'sleepDays': case 'deadDays': case 'resurfaceMinDays': case 'speechRate': {
+        const n = Number(value);
+        if (Number.isFinite(n) && n > 0) s[key] = n;
+        break;
+      }
+      case 'openOnStartup': case 'themeAll': case 'skinClaudian': case 'autoSend': case 'colorFolderNames':
+        s[key] = value === true; break;
+      default: return;
+    }
+    await this.plugin.saveSettings();
+    if (key === 'language') { setLang(s.language === 'auto' ? obsidianLang() : s.language); this.refresh(); }
+    if (key === 'themeAll' || key === 'skinClaudian') this.plugin.applySkin();
+    if (key === 'colorFolderNames') this.plugin.icons.applyAll();
+  }
+
   display() {
     const { containerEl } = this;
     containerEl.empty();
@@ -400,7 +507,7 @@ class FacelessSettingTab extends PluginSettingTab {
     text(l.instructions, l.instructionsDesc, () => s.instructionsFile, v => { s.instructionsFile = v; });
     area(l.shortcuts, l.shortcutsDesc, () => s.shortcuts.join('\n'), v => { s.shortcuts = lines(v); });
     new Setting(containerEl).setName(l.reviewDay).addDropdown(d => {
-      l.weekdays.forEach((n, i) => d.addOption(String(i + 1), n));
+      l.weekdays.forEach((n, i) => { d.addOption(String(i + 1), n); });
       d.setValue(String(s.reviewWeekday)).onChange(async v => { s.reviewWeekday = Number(v); await save(); });
     });
     area(l.deadlines, l.deadlinesDesc, () => s.deadlines.map(d => `${d.label} | ${d.date}`).join('\n'),

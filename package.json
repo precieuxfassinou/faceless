@@ -1,6 +1,6 @@
 {
   "name": "faceless",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Sci-fi HUD home page for Obsidian",
   "scripts": {
     "build": "node build.mjs"
