@@ -139,7 +139,7 @@ export class HomeView extends ItemView {
       const d = today.clone().add(k, 'days');
       const cell = row.createDiv({ cls: 'fl-tape-day' + (k === 0 ? ' is-today' : '') + (d.isoWeekday() >= 6 ? ' is-weekend' : '') });
       cell.createDiv({ cls: 'fl-tape-tick' });
-      cell.createDiv({ cls: 'fl-tape-label', text: k === 0 ? d.locale('fr').format('ddd D') : d.format('D') });
+      cell.createDiv({ cls: 'fl-tape-label', text: k === 0 ? d.locale(lang()).format('ddd D') : d.format('D') });
       const m = marks.get(d.format('YYYY-MM-DD'));
       if (m) { cell.addClass('has-mark'); cell.setAttr('aria-label', m.join('\n')); }
     }

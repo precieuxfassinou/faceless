@@ -6,6 +6,8 @@ It opens in its own tab and tells you, in one short paragraph built from your va
 
 The interface follows Obsidian's language: **English or French**.
 
+![Faceless home page in a demo vault](docs/screenshot.png)
+
 ## What is on the page
 
 - **The voice paragraph.** Plain facts computed locally from your notes. No AI, no network.
