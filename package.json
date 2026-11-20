@@ -1,0 +1,21 @@
+{
+  "name": "faceless",
+  "version": "1.0.0",
+  "description": "Sci-fi HUD home page for Obsidian",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "author": "precieuxfassinou",
+  "license": "MIT",
+  "devDependencies": {
+    "@fontsource-variable/newsreader": "^5.3.0",
+    "@fontsource/chakra-petch": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@phosphor-icons/core": "^2.1.1",
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "moment": "^2.31.0",
+    "obsidian": "^1.14.4",
+    "typescript": "^7.0.2"
+  }
+}

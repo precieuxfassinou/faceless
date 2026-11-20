@@ -1,0 +1,5 @@
+node_modules/
+dist/
+src/phosphor-data.json
+*.bak.css
+*.log
