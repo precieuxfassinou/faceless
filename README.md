@@ -2,7 +2,7 @@
 
 A home page for Obsidian in the style of a sci-fi HUD, with a voice and no face.
 
-It opens in its own tab and tells you, in one short paragraph built from your vault, what matters today: where you left off, which projects have gone idle, which dated tasks are long overdue, what deadline is next. Press **Listen** and it reads it aloud.
+It opens in its own tab and tells you, in one short paragraph built from your vault, what matters today: where you left off, which projects have gone idle, which dated tasks are long overdue, what deadline is next. Press **Listen** and it reads it aloud with your system voice.
 
 The interface follows Obsidian's language: **English or French**.
 
@@ -29,25 +29,18 @@ The interface follows Obsidian's language: **English or French**.
 2. Optional: add deadlines (`Final exam | 2027-03`, `Thesis defense | 2027-06-14`), shortcuts to notes, and the checkpoint heading you use in your project hubs.
 3. Run **Faceless: Open home** or click the waveform icon in the ribbon.
 
-## Natural voice (optional)
+## Voice
 
-By default Faceless uses your system's voices, which sound robotic. For a natural voice it can drive **[Piper](https://github.com/rhasspy/piper)**, a free neural text-to-speech engine that runs locally.
-
-Faceless does **not** download or install anything. To use Piper:
-
-1. Download Piper for your system from its [releases page](https://github.com/rhasspy/piper/releases/tag/2023.11.14-2) and unzip it.
-2. Download a voice (both the `.onnx` and `.onnx.json` files) from [piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main), for example `en/en_GB/alan/medium` or `fr/fr_FR/tom/medium`.
-3. Either put them in the default folder shown in the settings (`%LOCALAPPDATA%\Faceless\piper` on Windows, with the voice under `voices/`), or set both paths in **Settings → Faceless → Voice**.
-4. Click **Play a sample**.
+**Listen** reads the paragraph with your system's text-to-speech voice, in the interface language. While it speaks, the waveform in the reactor moves.
 
 ## Disclosures
 
-- **Network use:** none. The two buttons in the voice settings only open the Piper download pages in your browser.
-- **Files outside the vault:** only if you configure Piper. Faceless then reads the Piper program and voice model at the paths you set, and runs the Piper program locally as a child process to turn text into audio. Nothing else outside your vault is read or written.
-- **Files inside the vault:** Faceless creates a weekly review note when you click the button, and edits a task line only when you click **Drop**. Everything else is read-only.
-- **No telemetry, no ads, no account.**
+- **Network use:** none.
+- **Files outside the vault:** none. Faceless does not use Node.js file or process APIs.
+- **Files inside the vault:** Faceless reads your notes through Obsidian's API to build the page (it lists every note to count them, find notes with no incoming link and pick a note to revisit). It writes only when you click: a weekly review note when you start the review, and a task line when you click **Drop**.
+- **Clipboard, local storage, telemetry, ads, accounts:** none.
 - The file explorer icons rely on an undocumented part of Obsidian's file explorer; a future Obsidian update could break them without affecting the rest of the plugin.
-- The Claudian integration is optional and only active when Claudian is installed.
+- The Claudian integration is optional and only active when Claudian is installed: it types your question into Claudian's input.
 
 Desktop only.
 
@@ -64,4 +57,4 @@ License: MIT. Bundled fonts and icons: see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_
 
 ## Français
 
-Page d'accueil façon HUD de science-fiction, qui parle : où tu t'es arrêté, les projets en veille, une note à relire, les tâches très en retard à trancher, les échéances, la revue de la semaine. L'interface suit la langue d'Obsidian (français ou anglais). Voix naturelle facultative avec Piper, à installer soi-même : Faceless ne télécharge rien. Aucune requête réseau, aucune télémétrie.
+Page d'accueil façon HUD de science-fiction, qui parle : où tu t'es arrêté, les projets en veille, une note à relire, les tâches très en retard à trancher, les échéances, la revue de la semaine. L'interface suit la langue d'Obsidian (français ou anglais). Lecture à voix haute avec la voix du système. Aucune requête réseau, aucun accès hors du vault, aucune télémétrie.

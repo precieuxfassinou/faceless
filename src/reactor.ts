@@ -4,7 +4,7 @@ import { t } from './i18n';
 const NS = 'http://www.w3.org/2000/svg';
 
 function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>, parent?: Element): SVGElementTagNameMap[K] {
-  const e = document.createElementNS(NS, tag);
+  const e = activeDocument.createElementNS(NS, tag);
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
   parent?.appendChild(e);
   return e;
@@ -73,7 +73,7 @@ export function buildReactor(parent: HTMLElement, data: ReactorData): Reactor {
     const x = (i - (BARS - 1) / 2) * 11 - 2.5;
     bars.push(el('rect', { x, y: -22, width: 5, height: 44, rx: 2.5 }, wave));
   }
-  const rest = () => bars.forEach((b, i) => { b.style.transform = `scaleY(${0.14 + 0.1 * Math.sin(i * 1.3) ** 2})`; });
+  const rest = () => bars.forEach((b, i) => { b.setCssStyles({ transform: `scaleY(${0.14 + 0.1 * Math.sin(i * 1.3) ** 2})` }); });
   rest();
   const cap = el('text', { y: 44, class: 'fl-r-caption', 'text-anchor': 'middle' }, svg);
   cap.textContent = data.caption;
@@ -82,13 +82,13 @@ export function buildReactor(parent: HTMLElement, data: ReactorData): Reactor {
     svg,
     pulse: () => bars.forEach((b, i) => {
       const centre = 1 - Math.abs(i - (BARS - 1) / 2) / BARS;
-      b.style.transform = `scaleY(${(0.25 + Math.random() * 0.75 * centre).toFixed(2)})`;
+      b.setCssStyles({ transform: `scaleY(${(0.25 + Math.random() * 0.75 * centre).toFixed(2)})` });
     }),
     // niveaux réels de la voix (0..1 par bande), symétriques autour de la barre centrale
     level: (levels: number[]) => bars.forEach((b, i) => {
       const k = Math.abs(i - (BARS - 1) / 2);
       const v = levels[Math.min(levels.length - 1, Math.round(k * 2))] ?? 0;
-      b.style.transform = `scaleY(${Math.max(0.12, Math.min(1, v * 1.8)).toFixed(2)})`;
+      b.setCssStyles({ transform: `scaleY(${Math.max(0.12, Math.min(1, v * 1.8)).toFixed(2)})` });
     }),
     rest,
   };

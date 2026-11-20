@@ -3,8 +3,10 @@ import { HomeView, HOME_VIEW } from './home';
 import { IconManager, type IconOverride } from './icons';
 import { registerPhosphor } from './phosphor';
 import { moment, type Task } from './insights';
-import { PIPER_RELEASES, PIPER_VOICES_URL, PiperPlayer, defaultDir, detect as detectPiper, ready as piperReady } from './piper';
 import { lang, obsidianLang, setLang, t, type Lang } from './i18n';
+import { internals } from './internals';
+
+interface CmView { dispatch(spec: unknown): void; state: { doc: { length: number } } }
 
 export interface FacelessSettings {
   language: 'auto' | Lang;
@@ -24,9 +26,7 @@ export interface FacelessSettings {
   deadlines: { label: string; date: string }[];
   skinClaudian: boolean;
   themeAll: boolean;
-  voiceEngine: 'piper' | 'system';
-  piperPath: string;
-  piperModel: string;
+  voiceEngine: 'natural' | 'system';
   speechRate: number;
   voiceName: string;
   autoSend: boolean;
@@ -55,9 +55,7 @@ const DEFAULTS: FacelessSettings = {
   deadlines: [],
   skinClaudian: true,
   themeAll: true,
-  voiceEngine: 'piper',
-  piperPath: '',
-  piperModel: '',
+  voiceEngine: 'natural',
   speechRate: 1.0,
   voiceName: '',
   autoSend: true,
@@ -69,13 +67,21 @@ const DEFAULTS: FacelessSettings = {
 };
 
 const CLAUDIAN_ID = 'realclaudian';
+const VOICE_ID = 'faceless-voice';
+
+/** API du module facultatif Faceless Voice (voix naturelle locale), s'il est installé. */
+interface NaturalVoice {
+  ready(): boolean;
+  speaking: boolean;
+  speak(text: string, rate: number, onLevel: (levels: number[]) => void, onEnd: () => void): void;
+  stop(): void;
+}
 const CLAUDIAN_VIEW = 'claudian-view';
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise(r => window.setTimeout(r, ms));
 
 export default class FacelessPlugin extends Plugin {
   settings: FacelessSettings = structuredClone(DEFAULTS);
   icons!: IconManager;
-  player = new PiperPlayer();
   private warnedVoice = false;
 
   async onload() {
@@ -89,6 +95,7 @@ export default class FacelessPlugin extends Plugin {
     this.addSettingTab(new FacelessSettingTab(this.app, this));
 
     this.applySkin();
+    this.registerEvent(this.app.workspace.on('window-open', (win) => this.skinBody(win.doc.body)));
     this.icons = new IconManager(this.app, this);
     this.icons.start();
 
@@ -100,17 +107,27 @@ export default class FacelessPlugin extends Plugin {
 
   onunload() {
     this.icons?.stop();
-    document.body.removeClass('fl-skin-claudian');
-    document.body.removeClass('fl-theme');
+    for (const body of this.bodies()) { body.removeClass('fl-skin-claudian'); body.removeClass('fl-theme'); }
     this.stopSpeaking();
   }
 
-  applySkin() {
-    document.body.toggleClass('fl-skin-claudian', this.settings.skinClaudian && this.hasClaudian());
-    document.body.toggleClass('fl-theme', this.settings.themeAll);
+  /** Le corps de la fenêtre principale et de chaque fenêtre détachée. */
+  private bodies(): HTMLElement[] {
+    const docs = new Set<Document>([activeDocument]);
+    this.app.workspace.iterateAllLeaves(leaf => { docs.add(leaf.view.containerEl.ownerDocument); });
+    return [...docs].map(d => d.body);
   }
 
-  hasClaudian(): boolean { return !!(this.app as any).plugins?.enabledPlugins?.has(CLAUDIAN_ID); }
+  applySkin() {
+    for (const body of this.bodies()) this.skinBody(body);
+  }
+
+  private skinBody(body: HTMLElement) {
+    body.toggleClass('fl-skin-claudian', this.settings.skinClaudian && this.hasClaudian());
+    body.toggleClass('fl-theme', this.settings.themeAll);
+  }
+
+  hasClaudian(): boolean { return !!internals(this.app).plugins?.enabledPlugins?.has(CLAUDIAN_ID); }
 
   /** Premier lancement : devine les dossiers du journal et des projets d'après leurs noms. */
   private detectFolders() {
@@ -135,10 +152,10 @@ export default class FacelessPlugin extends Plugin {
   /** Ouvre l'accueil sans jamais fermer d'onglet : réutilise le sien s'il existe, sinon un nouvel onglet. */
   async openHome() {
     const existing = this.app.workspace.getLeavesOfType(HOME_VIEW)[0];
-    if (existing) { this.app.workspace.revealLeaf(existing); return; }
+    if (existing) { await this.app.workspace.revealLeaf(existing); return; }
     const leaf: WorkspaceLeaf = this.app.workspace.getLeaf('tab');
     await leaf.setViewState({ type: HOME_VIEW, active: true });
-    this.app.workspace.revealLeaf(leaf);
+    await this.app.workspace.revealLeaf(leaf);
   }
 
   /* ---------------------------------------------------------- revue de la semaine */
@@ -160,7 +177,7 @@ export default class FacelessPlugin extends Plugin {
       ].join('\n');
       file = await this.app.vault.create(path, body);
     }
-    await this.app.workspace.getLeaf('tab').openFile(file as TFile);
+    if (file instanceof TFile) await this.app.workspace.getLeaf('tab').openFile(file);
   }
 
   /* ---------------------------------------------------------- tâches */
@@ -180,34 +197,31 @@ export default class FacelessPlugin extends Plugin {
 
   /* ---------------------------------------------------------- voix */
 
-  get speaking() { return this.player.speaking || !!window.speechSynthesis?.speaking; }
-
-  stopSpeaking() { this.player.stop(); window.speechSynthesis?.cancel(); }
-
-  piperPaths(): { exe: string; model: string } {
-    const found = detectPiper();
-    return { exe: this.settings.piperPath || found.exe, model: this.settings.piperModel || found.model };
+  /** Le module Faceless Voice, s'il est installé et activé. */
+  naturalVoice(): NaturalVoice | null {
+    const p = internals(this.app).plugins?.getPlugin?.(VOICE_ID) as NaturalVoice | undefined;
+    return p && typeof p.speak === 'function' ? p : null;
   }
 
+  get speaking() { return !!this.naturalVoice()?.speaking || !!window.speechSynthesis?.speaking; }
+
+  stopSpeaking() { this.naturalVoice()?.stop(); window.speechSynthesis?.cancel(); }
+
   /**
-   * Lit le texte. Voix naturelle Piper si elle est configurée, sinon voix du système dans la langue choisie.
-   * onLevel reçoit les niveaux réels de la voix (Piper) ou null à chaque mot (voix du système).
+   * Lit le texte. Voix naturelle si le module Faceless Voice est installé et prêt,
+   * sinon voix du système dans la langue choisie.
+   * onLevel reçoit les niveaux réels de la voix (voix naturelle) ou null à chaque mot (voix du système).
    */
   async speak(text: string, onEnd?: () => void, onLevel?: (levels: number[] | null) => void) {
     this.stopSpeaking();
     const end = () => onEnd?.();
-    if (this.settings.voiceEngine === 'piper') {
-      const { exe, model } = this.piperPaths();
-      if (piperReady(exe, model)) {
-        try {
-          this.player.speak(text, exe, model, this.settings.speechRate, (l) => onLevel?.(l), end);
-          return;
-        } catch (e) {
-          new Notice(t().piperFailed((e as Error).message));
-        }
-      } else if (!this.warnedVoice) {
-        this.warnedVoice = true;
-        new Notice(t().piperMissing, 8000);
+    const natural = this.settings.voiceEngine === 'natural' ? this.naturalVoice() : null;
+    if (natural?.ready()) {
+      try {
+        natural.speak(text, this.settings.speechRate, (l) => onLevel?.(l), end);
+        return;
+      } catch (e) {
+        new Notice(t().piperFailed((e as Error).message));
       }
     }
     const synth = window.speechSynthesis;
@@ -233,10 +247,10 @@ export default class FacelessPlugin extends Plugin {
     let leaf = this.app.workspace.getLeavesOfType(CLAUDIAN_VIEW)[0] ?? null;
     if (!leaf) {
       // la commande de Claudian bascule la vue : on ne l'appelle que si elle n'existe pas
-      (this.app as any).commands?.executeCommandById(`${CLAUDIAN_ID}:open-view`);
+      internals(this.app).commands?.executeCommandById(`${CLAUDIAN_ID}:open-view`);
       for (let i = 0; i < 20 && !leaf; i++) { await sleep(150); leaf = this.app.workspace.getLeavesOfType(CLAUDIAN_VIEW)[0] ?? null; }
     }
-    if (leaf) this.app.workspace.revealLeaf(leaf);
+    if (leaf) await this.app.workspace.revealLeaf(leaf);
     return leaf;
   }
 
@@ -251,29 +265,25 @@ export default class FacelessPlugin extends Plugin {
       if (!input) await sleep(150);
     }
     if (!input) {
-      await navigator.clipboard.writeText(prompt);
-      new Notice(t().claudianMissing);
+      new Notice(t().claudianMissing, 8000);
       return;
     }
     input.focus();
     let written = false;
-    if (input instanceof HTMLTextAreaElement) {
+    if (input.instanceOf(HTMLTextAreaElement)) {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, prompt);
       input.dispatchEvent(new Event('input', { bubbles: true }));
       written = true;
     } else {
-      const view = (input as any).cmView?.view ?? (input as any).cmView?.editorView;
+      const cm = (input as unknown as { cmView?: { view?: CmView; editorView?: CmView } }).cmView;
+      const view = cm?.view ?? cm?.editorView;
       if (view?.dispatch) {
         view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: prompt }, selection: { anchor: prompt.length } });
         written = true;
-      } else {
-        document.execCommand('selectAll');
-        written = document.execCommand('insertText', false, prompt);
       }
     }
     if (!written) {
-      await navigator.clipboard.writeText(prompt);
-      new Notice(t().claudianWrite);
+      new Notice(t().claudianWrite, 8000);
       return;
     }
     if (this.settings.autoSend) {
@@ -285,7 +295,7 @@ export default class FacelessPlugin extends Plugin {
   /* ---------------------------------------------------------- réglages */
 
   async loadSettings() {
-    this.settings = Object.assign(structuredClone(DEFAULTS), (await this.loadData()) ?? {});
+    this.settings = Object.assign(structuredClone(DEFAULTS), ((await this.loadData()) ?? {}) as Partial<FacelessSettings>);
     setLang(this.settings.language === 'auto' ? obsidianLang() : this.settings.language);
   }
 
@@ -300,7 +310,7 @@ function systemVoices(): Promise<SpeechSynthesisVoice[]> {
   return new Promise(resolve => {
     const done = () => { synth.removeEventListener('voiceschanged', done); resolve(synth.getVoices()); };
     synth.addEventListener('voiceschanged', done);
-    setTimeout(done, 1500);
+    window.setTimeout(done, 1500);
   });
 }
 
@@ -322,11 +332,9 @@ const L = () => lang() === 'fr' ? {
   look: 'Apparence', theme: 'Thème Faceless dans tout Obsidian', themeDesc: 'Barre latérale, onglets, titres et barre d\'état aux couleurs de Faceless (thème sombre).',
   claudian: 'Claudian', skin: 'Habiller Claudian', skinDesc: 'Mêmes couleurs que Faceless. Claudian n\'est pas modifié : désactiver rend son style d\'origine.',
   autoSend: 'Envoyer la question automatiquement', prefix: 'Consigne ajoutée à chaque question', prefixDesc: 'Vide : consigne par défaut.',
-  voice: 'Voix', engine: 'Moteur', engineDesc: 'Piper : voix neuronale naturelle, locale et gratuite, à installer soi-même. Système : voix intégrées, plus robotiques.',
-  piperSys: 'Système', piperOk: 'Voix naturelle prête', piperTodo: 'Installer Piper',
-  piperHow: (dir: string) => `1. Télécharge piper (Windows : piper_windows_amd64.zip) et décompresse-le dans ${dir}. 2. Télécharge une voix (.onnx et .onnx.json, par exemple fr/fr_FR/tom/medium) dans ${dir}\\voices. Ou indique les chemins ci-dessous.`,
-  piperLinks: 'Télécharger Piper', voicesLink: 'Choisir une voix', test: 'Écouter un essai', recheck: 'Vérifier',
-  piperPath: 'Chemin de piper', piperModel: 'Chemin du modèle de voix (.onnx)', detected: 'Vide : détection automatique.',
+  voice: 'Voix', engine: 'Voix utilisée', engineDesc: 'Voix du système, plus robotique. Une voix naturelle locale est possible avec un module séparé (accès disque et lancement d\'un programme), non inclus pour garder Faceless sans ces permissions.',
+  natural: 'Naturelle si disponible', piperSys: 'Système', test: 'Écouter un essai',
+  naturalOk: 'Module de voix naturelle détecté et prêt.', naturalNotReady: 'Module de voix naturelle détecté, mais pas encore configuré : voir ses réglages.',
   sysVoice: 'Voix du système (secours)', sysVoiceAuto: 'Automatique', rate: 'Vitesse de lecture',
   icons: 'Icônes', colorNames: 'Noms des dossiers principaux en couleur', manual: 'Icônes choisies à la main',
   manualDesc: (n: number) => `${n} icône(s). Clic droit sur un fichier → « Changer l'icône ».`, resetIcons: 'Tout remettre en automatique',
@@ -348,11 +356,9 @@ const L = () => lang() === 'fr' ? {
   look: 'Appearance', theme: 'Faceless theme across Obsidian', themeDesc: 'Sidebar, tabs, headings and status bar in Faceless colors (dark theme).',
   claudian: 'Claudian', skin: 'Skin Claudian', skinDesc: 'Same colors as Faceless. Claudian itself is not modified: turning this off restores its style.',
   autoSend: 'Send the question automatically', prefix: 'Instruction added to each question', prefixDesc: 'Empty: default instruction.',
-  voice: 'Voice', engine: 'Engine', engineDesc: 'Piper: natural neural voice, local and free, installed by you. System: built-in voices, more robotic.',
-  piperSys: 'System', piperOk: 'Natural voice ready', piperTodo: 'Install Piper',
-  piperHow: (dir: string) => `1. Download piper (Windows: piper_windows_amd64.zip) and unzip it into ${dir}. 2. Download a voice (.onnx and .onnx.json, e.g. en/en_GB/alan/medium) into ${dir}/voices. Or set the paths below.`,
-  piperLinks: 'Download Piper', voicesLink: 'Pick a voice', test: 'Play a sample', recheck: 'Check again',
-  piperPath: 'Path to piper', piperModel: 'Path to the voice model (.onnx)', detected: 'Empty: automatic detection.',
+  voice: 'Voice', engine: 'Voice used', engineDesc: 'System voice, more robotic. A natural local voice is possible with a separate add-on (disk access and launching a program), not included so that Faceless needs neither.',
+  natural: 'Natural when available', piperSys: 'System', test: 'Play a sample',
+  naturalOk: 'Natural voice add-on detected and ready.', naturalNotReady: 'Natural voice add-on detected but not configured yet: see its settings.',
   sysVoice: 'System voice (fallback)', sysVoiceAuto: 'Automatic', rate: 'Reading speed',
   icons: 'Icons', colorNames: 'Color top-level folder names', manual: 'Hand-picked icons',
   manualDesc: (n: number) => `${n} icon(s). Right-click a file → "Change icon".`, resetIcons: 'Reset all to automatic',
@@ -398,7 +404,7 @@ class FacelessSettingTab extends PluginSettingTab {
       d.setValue(String(s.reviewWeekday)).onChange(async v => { s.reviewWeekday = Number(v); await save(); });
     });
     area(l.deadlines, l.deadlinesDesc, () => s.deadlines.map(d => `${d.label} | ${d.date}`).join('\n'),
-      v => { s.deadlines = lines(v).map(x => x.split('|').map(y => y.trim())).filter(p => p.length === 2 && p[0] && /^\d{4}-\d{2}(-\d{2})?$/.test(p[1]!)).map(p => ({ label: p[0]!, date: p[1]! })); });
+      v => { s.deadlines = lines(v).map(x => x.split('|').map(y => y.trim())).filter(p => p.length === 2 && p[0] && /^\d{4}-\d{2}(-\d{2})?$/.test(p[1])).map(p => ({ label: p[0], date: p[1] })); });
 
     new Setting(containerEl).setName(l.thresholds).setHeading();
     num(l.sleep, l.sleepDesc, () => s.sleepDays, n => { s.sleepDays = n; });
@@ -421,22 +427,11 @@ class FacelessSettingTab extends PluginSettingTab {
     }
 
     new Setting(containerEl).setName(l.voice).setHeading();
-    new Setting(containerEl).setName(l.engine).setDesc(l.engineDesc).addDropdown(d => d
-      .addOption('piper', 'Piper').addOption('system', l.piperSys).setValue(s.voiceEngine)
-      .onChange(async v => { s.voiceEngine = v as FacelessSettings['voiceEngine']; await save(); this.display(); }));
-    if (s.voiceEngine === 'piper') {
-      const { exe, model } = this.plugin.piperPaths();
-      const ok = piperReady(exe, model);
-      const st = new Setting(containerEl).setName(ok ? l.piperOk : l.piperTodo).setDesc(ok ? `${exe}\n${model}` : l.piperHow(defaultDir()));
-      if (ok) st.addButton(b => b.setButtonText(l.test).setCta().onClick(() => void this.plugin.speak(t().testPhrase)));
-      else {
-        st.addButton(b => b.setButtonText(l.piperLinks).onClick(() => window.open(PIPER_RELEASES)));
-        st.addButton(b => b.setButtonText(l.voicesLink).onClick(() => window.open(PIPER_VOICES_URL)));
-        st.addButton(b => b.setButtonText(l.recheck).onClick(() => this.display()));
-      }
-      text(l.piperPath, l.detected, () => s.piperPath, v => { s.piperPath = v; });
-      text(l.piperModel, l.detected, () => s.piperModel, v => { s.piperModel = v; });
-    }
+    const natural = this.plugin.naturalVoice();
+    new Setting(containerEl).setName(l.engine).setDesc(natural ? (natural.ready() ? l.naturalOk : l.naturalNotReady) : l.engineDesc).addDropdown(d => d
+      .addOption('natural', l.natural).addOption('system', l.piperSys).setValue(s.voiceEngine)
+      .onChange(async v => { s.voiceEngine = v as FacelessSettings['voiceEngine']; await save(); }))
+      .addButton(b => b.setButtonText(l.test).onClick(() => void this.plugin.speak(t().testPhrase)));
     const voices = window.speechSynthesis?.getVoices() ?? [];
     new Setting(containerEl).setName(l.sysVoice).addDropdown(d => {
       d.addOption('', l.sysVoiceAuto);
@@ -444,7 +439,7 @@ class FacelessSettingTab extends PluginSettingTab {
       d.setValue(s.voiceName).onChange(async v => { s.voiceName = v; await save(); });
     });
     new Setting(containerEl).setName(l.rate)
-      .addSlider(sl => sl.setLimits(0.7, 1.5, 0.05).setValue(s.speechRate).setDynamicTooltip().onChange(async v => { s.speechRate = v; await save(); }));
+      .addSlider(sl => sl.setLimits(0.7, 1.5, 0.05).setValue(s.speechRate).onChange(async v => { s.speechRate = v; await save(); }));
 
     new Setting(containerEl).setName(l.icons).setHeading();
     new Setting(containerEl).setName(l.colorNames)

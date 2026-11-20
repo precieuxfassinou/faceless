@@ -3,3 +3,4 @@ dist/
 src/phosphor-data.json
 *.bak.css
 *.log
+eslint.config.mjs

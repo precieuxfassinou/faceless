@@ -1,10 +1,11 @@
 /* Langue de l'interface : celle d'Obsidian (français ou anglais), modifiable dans les réglages. */
+import { moment } from 'obsidian';
 
 export type Lang = 'fr' | 'en';
 
 export function obsidianLang(): Lang {
-  const l = window.localStorage.getItem('language') || navigator.language || 'en';
-  return l.toLowerCase().startsWith('fr') ? 'fr' : 'en';
+  // Obsidian règle la langue de moment sur celle de son interface
+  return (moment.locale() || 'en').toLowerCase().startsWith('fr') ? 'fr' : 'en';
 }
 
 const FR = {

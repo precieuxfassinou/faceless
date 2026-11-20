@@ -1,8 +1,10 @@
 import { App, FuzzySuggestModal, ItemView, MarkdownRenderer, TFile, WorkspaceLeaf, debounce, setIcon } from 'obsidian';
 import { Insights, ago, clip, moment, plain, taskKey, type Snapshot, type Task } from './insights';
+import type { Moment } from 'moment';
 import { compose, dayWords, untilWords, weekdayName } from './voice';
 import { buildGauge, buildReactor, type Reactor } from './reactor';
 import { lang, t } from './i18n';
+import { internals } from './internals';
 import type FacelessPlugin from './main';
 
 export const HOME_VIEW = 'faceless-home';
@@ -42,7 +44,7 @@ export class HomeView extends ItemView {
     this.tick();
     this.registerInterval(window.setInterval(() => this.tick(), 15_000));
     this.registerDomEvent(root, 'mousemove', (e) => this.parallax(e));
-    this.registerDomEvent(root, 'mouseleave', () => { root.style.setProperty('--px', '0'); root.style.setProperty('--py', '0'); });
+    this.registerDomEvent(root, 'mouseleave', () => { root.setCssProps({ '--px': '0', '--py': '0' }); });
     await this.render();
 
     const soon = debounce(() => { if (this.contentEl.isShown()) void this.render(); }, 2500, true);
@@ -56,7 +58,7 @@ export class HomeView extends ItemView {
 
   async onClose() {
     this.plugin.stopSpeaking();
-    cancelAnimationFrame(this.raf);
+    window.cancelAnimationFrame(this.raf);
     this.contentEl.empty();
   }
 
@@ -69,13 +71,12 @@ export class HomeView extends ItemView {
   /** Profondeur : le réacteur et les panneaux glissent de quelques pixels, en sens opposés. */
   private parallax(e: MouseEvent) {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    cancelAnimationFrame(this.raf);
-    this.raf = requestAnimationFrame(() => {
+    window.cancelAnimationFrame(this.raf);
+    this.raf = window.requestAnimationFrame(() => {
       const r = this.contentEl.getBoundingClientRect();
       const x = ((e.clientX - r.left) / r.width - 0.5) * 2;
       const y = ((e.clientY - r.top) / r.height - 0.5) * 2;
-      this.contentEl.style.setProperty('--px', x.toFixed(3));
-      this.contentEl.style.setProperty('--py', y.toFixed(3));
+      this.contentEl.setCssProps({ '--px': x.toFixed(3), '--py': y.toFixed(3) });
     });
   }
 
@@ -91,7 +92,7 @@ export class HomeView extends ItemView {
       body.toggleClass('fl-enter', this.firstPaint);
       this.firstPaint = false;
       let i = 0;
-      const stagger = (e: HTMLElement) => { e.style.setProperty('--i', String(i++)); return e; };
+      const stagger = (e: HTMLElement) => { e.setCssProps({ '--i': String(i++) }); return e; };
 
       this.renderTape(stagger(body.createDiv({ cls: 'fl-tape' })), s);
       const hero = stagger(body.createDiv({ cls: 'fl-hero' }));
@@ -151,7 +152,7 @@ export class HomeView extends ItemView {
     }
   }
 
-  private tMinus(when: any, precise: boolean, now: any): string {
+  private tMinus(when: Moment, precise: boolean, now: Moment): string {
     const days = Math.ceil((when.valueOf() - now.clone().startOf('day').valueOf()) / DAY);
     if (precise && days <= 60) return `T-${Math.max(days, 0)} ${lang() === 'fr' ? 'j' : 'd'}`;
     const months = when.clone().startOf('month').diff(now.clone().startOf('month'), 'months');
@@ -272,14 +273,14 @@ export class HomeView extends ItemView {
       const l = r.createDiv({ cls: 'fl-line' });
       l.createSpan({ cls: 'fl-stat-label', text: label });
       l.createSpan({ cls: 'fl-mono', text: value });
-      if (ratio !== undefined) r.createDiv({ cls: 'fl-bar' }).createDiv({ cls: 'fl-bar-fill' }).style.width = `${Math.min(100, ratio * 100).toFixed(0)}%`;
+      if (ratio !== undefined) r.createDiv({ cls: 'fl-bar' }).createDiv({ cls: 'fl-bar-fill' }).setCssStyles({ width: `${Math.min(100, ratio * 100).toFixed(0)}%` });
       if (onClick) r.addEventListener('click', onClick);
     };
     row(t().sNotes, String(h.notes));
     row(t().sOrphans, String(h.orphans.length), h.orphans.length > 20,
       h.orphans.length ? () => new FileListModal(this.app, h.orphans.map(f => ({ label: f.path, file: f })), t().orphansTitle).open() : undefined);
     row(t().sUnresolved, String(h.unresolved.length), false,
-      h.unresolved.length ? () => new FileListModal(this.app, h.unresolved.map(u => ({ label: `${u.target}  ←  ${u.source}`, file: this.app.vault.getAbstractFileByPath(u.source) as TFile })), t().unresolvedTitle).open() : undefined);
+      h.unresolved.length ? () => new FileListModal(this.app, h.unresolved.map(u => ({ label: `${u.target}  ←  ${u.source}`, file: this.app.vault.getAbstractFileByPath(u.source) })).filter((x): x is { label: string; file: TFile } => x.file instanceof TFile), t().unresolvedTitle).open() : undefined);
     if (h.indexLines) {
       const ratio = h.indexCap ? h.indexLines / h.indexCap : undefined;
       row(t().sIndex, h.indexCap ? `${h.indexLines}/${h.indexCap}` : `${h.indexLines}`, !!ratio && ratio > 0.9,
@@ -305,8 +306,8 @@ export class HomeView extends ItemView {
   }
 
   private renderGoTo(parent: HTMLElement) {
-    const cmd = (id: string) => (this.app as any).commands?.executeCommandById(id);
-    const enabled = (id: string) => !!(this.app as any).plugins?.enabledPlugins?.has(id);
+    const cmd = (id: string): void => { internals(this.app).commands?.executeCommandById(id); };
+    const enabled = (id: string) => !!internals(this.app).plugins?.enabledPlugins?.has(id);
     const galaxy = ['galaxie', 'galaxie-3d'].find(enabled);
     if (galaxy) this.button(parent, 'ph-planet', t().galaxy, () => cmd(`${galaxy}:open`));
     if (this.plugin.hasClaudian()) this.button(parent, 'ph-chat-text', t().claudian, () => void this.plugin.revealClaudian());
@@ -324,11 +325,11 @@ export class HomeView extends ItemView {
     void this.app.workspace.getLeaf('tab').openFile(file, line !== undefined ? { eState: { line } } : undefined);
   }
 
-  private button(parent: HTMLElement, icon: string, label: string, onClick: () => void): HTMLElement {
+  private button(parent: HTMLElement, icon: string, label: string, onClick: () => void | Promise<void>): HTMLElement {
     const b = parent.createEl('button', { cls: 'fl-btn' });
     setIcon(b.createSpan({ cls: 'fl-btn-icon' }), icon);
     b.createSpan({ text: label });
-    b.addEventListener('click', onClick);
+    b.addEventListener('click', () => { void onClick(); });
     return b;
   }
 }

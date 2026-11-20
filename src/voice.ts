@@ -1,4 +1,5 @@
 import { moment, sinceWords, type Deadline, type Snapshot } from './insights';
+import type { Moment } from 'moment';
 import { lang, t } from './i18n';
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -10,7 +11,7 @@ export function joinList(items: string[]): string {
   return `${items.slice(0, -1).join(', ')} ${and} ${items[items.length - 1]}`;
 }
 
-export function dayWords(date: string, now: any): string {
+export function dayWords(date: string, now: Moment): string {
   const fr = lang() === 'fr';
   const d = moment(date, 'YYYY-MM-DD').locale(lang());
   const diff = now.clone().startOf('day').diff(d.clone().startOf('day'), 'days');
@@ -20,7 +21,7 @@ export function dayWords(date: string, now: any): string {
   return fr ? `le ${d.format(sameYear ? 'D MMMM' : 'D MMMM YYYY')}` : `on ${d.format(sameYear ? 'MMMM D' : 'MMMM D, YYYY')}`;
 }
 
-export function untilWords(d: Deadline, now: any): string {
+export function untilWords(d: Deadline, now: Moment): string {
   const fr = lang() === 'fr';
   if (d.precise) {
     const days = d.when.clone().startOf('day').diff(now.clone().startOf('day'), 'days');
@@ -34,7 +35,7 @@ export function untilWords(d: Deadline, now: any): string {
   return fr ? `dans environ ${months} mois` : `in about ${months} months`;
 }
 
-export const weekdayName = (n: number) => t().weekdays[n] ?? t().weekdays[5]!;
+export const weekdayName = (n: number) => t().weekdays[n] ?? t().weekdays[5];
 
 /**
  * Le paragraphe d'ouverture : des faits tirés du vault, dans l'ordre où ils servent la journée.

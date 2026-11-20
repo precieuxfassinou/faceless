@@ -1,9 +1,11 @@
 import { App, TFile, TFolder, moment as obsidianMoment } from 'obsidian';
+import type { Moment } from 'moment';
 import type { FacelessSettings } from './main';
 import { lang, t } from './i18n';
 
 // Le moment fourni par Obsidian est appelable ; ses types ne le disent pas avec cette configuration TypeScript.
-export const moment = obsidianMoment as unknown as (input?: unknown, format?: string) => any;
+export const moment = obsidianMoment as unknown as typeof import('moment');
+export type { Moment };
 
 const DAY = 86_400_000;
 
@@ -13,13 +15,13 @@ export interface Project {
   name: string; folder: TFolder; files: TFile[]; hub?: TFile; last: number; sleeping: boolean;
   roadmap?: { done: number; total: number; file: TFile }; reprise?: Reprise;
 }
-export interface Deadline { label: string; date: string; when: any; precise: boolean }
+export interface Deadline { label: string; date: string; when: Moment; precise: boolean }
 export interface Health {
   notes: number; orphans: TFile[]; unresolved: { source: string; target: string }[];
   indexLines?: number; indexCap?: number; lastChangelog?: string;
 }
 export interface Snapshot {
-  now: any; projects: Project[]; tasks: Task[]; deadTasks: Task[]; deadlines: Deadline[];
+  now: Moment; projects: Project[]; tasks: Task[]; deadTasks: Task[]; deadlines: Deadline[];
   forgotten: TFile | null; forgottenExcerpt: string; briefing: TFile | null; health: Health;
   review: TFile | null; isReviewDay: boolean;
 }
@@ -32,7 +34,7 @@ export function plain(md: string): string {
     .replace(/```[\s\S]*?```/g, '')
     .replace(/!\[\[[^\]]*\]\]/g, '')
     .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
-    .replace(/\[\[([^\]]+)\]\]/g, (_, t: string) => t.split('#')[0]!)
+    .replace(/\[\[([^\]]+)\]\]/g, (_, t: string) => t.split('#')[0])
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/~~([^~]+)~~/g, '$1')
     .replace(/^\s{0,3}>\s?/gm, '')
@@ -50,7 +52,7 @@ export function clip(s: string, n: number): string {
 }
 
 /** « depuis 18 jours », « depuis juillet » / "for 18 days", "since July" */
-export function sinceWords(ts: number, now: any): string {
+export function sinceWords(ts: number, now: Moment): string {
   const fr = lang() === 'fr';
   const days = Math.floor((now.valueOf() - ts) / DAY);
   if (days < 45) return fr ? `depuis ${days} jours` : `for ${days} days`;
@@ -59,7 +61,7 @@ export function sinceWords(ts: number, now: any): string {
   return fr ? `depuis ${when}` : `since ${when}`;
 }
 
-export function ago(ts: number, now: any): string {
+export function ago(ts: number, now: Moment): string {
   const fr = lang() === 'fr';
   const days = Math.floor((now.clone().startOf('day').valueOf() - moment(ts).startOf('day').valueOf()) / DAY);
   if (days <= 0) return fr ? 'aujourd’hui' : 'today';
@@ -166,7 +168,7 @@ export class Insights {
     try { re = new RegExp(this.s.repriseHeading, 'i'); } catch { re = /point de reprise|checkpoint/i; }
     const i = heads.findIndex(h => re.test(h.heading));
     if (i < 0) return undefined;
-    const h = heads[i]!;
+    const h = heads[i];
     const lines = (await this.app.vault.cachedRead(hub)).split('\n');
     const end = heads[i + 1]?.position.start.line ?? lines.length;
     const body = lines.slice(h.position.start.line + 1, end).join('\n');
@@ -176,7 +178,7 @@ export class Insights {
 
   /* ---------- note à relire : liée aux projets actifs de préférence */
 
-  private async forgotten(projects: Project[], now: any, reroll: number): Promise<{ file: TFile | null; excerpt: string }> {
+  private async forgotten(projects: Project[], now: Moment, reroll: number): Promise<{ file: TFile | null; excerpt: string }> {
     const minAge = this.s.resurfaceMinDays * DAY;
     const seen = this.s.resurfaced;
     const seenLimit = now.clone().subtract(90, 'days').format('YYYY-MM-DD');
@@ -194,7 +196,7 @@ export class Insights {
       if (this.inFolder(f, this.s.resurfaceExcludeFolders)) continue;
       if (f.stat.size < 400 || /hub|index|dashboard/i.test(f.basename)) continue;
       if (now.valueOf() - f.stat.mtime < minAge) continue;
-      if (seen[f.path] && seen[f.path]! > seenLimit) continue;
+      if (seen[f.path] && seen[f.path] > seenLimit) continue;
       let w = 1;
       if (activePaths.has(f.path) || linkedToActive.has(f.path) || activeNames.some(n => f.basename.toLowerCase().includes(n))) w = 4;
       else if (sleepingPaths.has(f.path)) w = 0.5;
@@ -205,7 +207,7 @@ export class Insights {
     const rnd = seeded(`${now.format('YYYY-MM-DD')}#${reroll}`);
     const total = pool.reduce((s, p) => s + p.w, 0);
     let r = rnd() * total;
-    let file = pool[pool.length - 1]!.f;
+    let file = pool[pool.length - 1].f;
     for (const p of pool) { r -= p.w; if (r <= 0) { file = p.f; break; } }
     const raw = (await this.app.vault.cachedRead(file)).replace(/^---[\s\S]*?\n---\n?/, '');
     const para = raw.split(/\n\s*\n/).filter(p => !/^\s*(#|\||```|- \[|!\[)/.test(p)).map(plain).find(p => p.length > 60) ?? '';
@@ -214,7 +216,7 @@ export class Insights {
 
   /* ---------- échéances */
 
-  private deadlines(now: any): Deadline[] {
+  private deadlines(now: Moment): Deadline[] {
     return this.s.deadlines
       .map(d => {
         const precise = /^\d{4}-\d{2}-\d{2}$/.test(d.date);
@@ -249,7 +251,7 @@ export class Insights {
     const orphans = files.filter(f => !inbound.has(f.path) && !this.inFolder(f, this.s.orphanExcludeFolders));
     const unresolved: Health['unresolved'] = [];
     for (const [source, dsts] of Object.entries(this.app.metadataCache.unresolvedLinks)) {
-      if (this.inFolder({ path: source } as TFile, ['Templates'])) continue;
+      if (source === 'Templates' || source.startsWith('Templates/')) continue;
       for (const target of Object.keys(dsts)) unresolved.push({ source, target });
     }
     const h: Health = { notes: files.length, orphans, unresolved };
@@ -259,7 +261,7 @@ export class Insights {
       h.indexLines = text.replace(/\n$/, '').split('\n').length;
       h.indexCap = Number(text.match(/Plafond\s*:\s*(\d+)/i)?.[1]) || undefined;
       const log = text.split(/^##\s+Changelog/im)[1] ?? '';
-      const dates = [...log.matchAll(/^-\s*(\d{4}-\d{2}-\d{2})/gm)].map(m => m[1]!).sort();
+      const dates = [...log.matchAll(/^-\s*(\d{4}-\d{2}-\d{2})/gm)].map(m => m[1]).sort();
       h.lastChangelog = dates[dates.length - 1];
     }
     return h;

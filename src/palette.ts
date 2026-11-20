@@ -15,6 +15,6 @@ export function folderColors(app: App): Map<string, string> {
   const groups = [...new Set(app.vault.getMarkdownFiles().map(f => topFolder(f.path)))].sort((a, b) => a.localeCompare(b));
   const m = new Map<string, string>();
   let i = 0;
-  for (const g of groups) m.set(g, g === '/' ? ROOT_COLOR : PALETTE[i++ % PALETTE.length]!);
+  for (const g of groups) m.set(g, g === '/' ? ROOT_COLOR : PALETTE[i++ % PALETTE.length]);
   return m;
 }

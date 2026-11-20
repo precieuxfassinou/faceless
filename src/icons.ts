@@ -6,6 +6,9 @@ import type FacelessPlugin from './main';
 
 export interface IconOverride { icon?: string; color?: string }
 
+/** Élément interne de l'explorateur de fichiers. */
+interface FileItem { selfEl?: HTMLElement; el?: HTMLElement; innerEl?: HTMLElement; file?: TAbstractFile }
+
 /* Icônes par mot-clé du nom de dossier (premier qui correspond). Elles décrivent le contenu, pas une métaphore. */
 const FOLDER_RULES: [RegExp, string][] = [
   [/instruction/i, 'ph-terminal-window'], [/journal|daily|quotidien/i, 'ph-calendar-blank'], [/projets?-acad/i, 'ph-student'], [/inbox|bo[iî]te/i, 'ph-tray'],
@@ -60,8 +63,10 @@ export class IconManager {
   stop() {
     for (const o of this.observers) o.disconnect();
     this.observers = [];
-    document.querySelectorAll('.fl-icon').forEach(el => el.remove());
-    document.querySelectorAll('.fl-colored-name').forEach(el => el.removeClass('fl-colored-name'));
+    for (const leaf of this.app.workspace.getLeavesOfType('file-explorer')) {
+      leaf.view.containerEl.querySelectorAll('.fl-icon').forEach(el => el.remove());
+      leaf.view.containerEl.querySelectorAll('.fl-colored-name').forEach(el => el.removeClass('fl-colored-name'));
+    }
   }
 
   iconFor(file: TAbstractFile): { icon: string; color: string } {
@@ -71,7 +76,8 @@ export class IconManager {
       const rule = FOLDER_RULES.find(([re]) => re.test(file.name));
       return { icon: pick(ov.icon, rule?.[1] ?? 'ph-folder-simple'), color };
     }
-    const f = file as TFile;
+    if (!(file instanceof TFile)) return { icon: pick(ov.icon, 'ph-file-text'), color };
+    const f = file;
     let icon = 'ph-file-text';
     if (f.extension === 'canvas') icon = 'ph-scribble';
     else if (f.extension === 'pdf') icon = 'ph-file-pdf';
@@ -91,7 +97,7 @@ export class IconManager {
 
   applyAll() {
     for (const leaf of this.app.workspace.getLeavesOfType('file-explorer')) {
-      const items = (leaf.view as any)?.fileItems as Record<string, any> | undefined;   // API interne de l'explorateur
+      const items = (leaf.view as unknown as { fileItems?: Record<string, FileItem> }).fileItems;   // API interne de l'explorateur
       if (!items) continue;
       for (const path in items) {
         const item = items[path];
@@ -99,7 +105,7 @@ export class IconManager {
         const inner: HTMLElement | undefined = item?.innerEl;
         if (!self || !inner || !item.file) continue;
         const { icon, color } = this.iconFor(item.file);
-        let el = self.querySelector(':scope > .fl-icon') as HTMLElement | null;
+        let el = self.querySelector<HTMLElement>(':scope > .fl-icon');
         if (!el) {
           el = createSpan({ cls: 'fl-icon' });
           self.insertBefore(el, inner);
@@ -108,12 +114,12 @@ export class IconManager {
         if (el.dataset.key !== key) {
           el.empty();
           setIcon(el, icon);
-          el.style.color = color;
+          el.setCssStyles({ color });
           el.dataset.key = key;
         }
         const isTop = item.file instanceof TFolder && !item.file.path.includes('/');
         self.toggleClass('fl-colored-name', this.plugin.settings.colorFolderNames && isTop);
-        if (item.file instanceof TFolder) self.style.setProperty('--fl-folder-color', color);
+        if (item.file instanceof TFolder) self.setCssProps({ '--fl-folder-color': color });
       }
     }
   }
@@ -181,7 +187,7 @@ class IconPickerModal extends FuzzySuggestModal<string> {
 }
 
 class ColorPickerModal extends FuzzySuggestModal<string> {
-  constructor(app: App, private current: string, private onPick: (color: string) => void) {
+  constructor(app: App, private current: string, private onPick: (color: string) => void | Promise<void>) {
     super(app);
     this.setPlaceholder(t().colorSearch);
   }
@@ -190,8 +196,8 @@ class ColorPickerModal extends FuzzySuggestModal<string> {
   renderSuggestion(match: { item: string }, el: HTMLElement) {
     el.addClass('fl-icon-suggestion');
     const dot = el.createSpan({ cls: 'fl-swatch' });
-    dot.style.background = match.item;
+    dot.setCssStyles({ background: match.item });
     el.createSpan({ text: this.getItemText(match.item) });
   }
-  onChooseItem(item: string) { this.onPick(item); }
+  onChooseItem(item: string) { void this.onPick(item); }
 }

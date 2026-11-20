@@ -38,5 +38,5 @@ fs.copyFileSync('manifest.json', 'dist/manifest.json');
 await esbuild.build({
   entryPoints: ['src/main.ts'], bundle: true, outfile: 'dist/main.js', format: 'cjs', target: 'es2020',
   platform: 'browser', minify: true, sourcemap: false, logLevel: 'info',
-  external: ['obsidian', 'electron', '@codemirror/*', '@lezer/*', 'child_process', 'fs', 'path', 'os'],
+  external: ['obsidian', 'electron', '@codemirror/*', '@lezer/*'],
 });
