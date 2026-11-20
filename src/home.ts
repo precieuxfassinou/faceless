@@ -307,7 +307,8 @@ export class HomeView extends ItemView {
   private renderGoTo(parent: HTMLElement) {
     const cmd = (id: string) => (this.app as any).commands?.executeCommandById(id);
     const enabled = (id: string) => !!(this.app as any).plugins?.enabledPlugins?.has(id);
-    if (enabled('galaxie-3d')) this.button(parent, 'ph-planet', t().galaxy, () => cmd('galaxie-3d:open'));
+    const galaxy = ['galaxie', 'galaxie-3d'].find(enabled);
+    if (galaxy) this.button(parent, 'ph-planet', t().galaxy, () => cmd(`${galaxy}:open`));
     if (this.plugin.hasClaudian()) this.button(parent, 'ph-chat-text', t().claudian, () => void this.plugin.revealClaudian());
     this.button(parent, 'ph-magnifying-glass', t().search, () => cmd(enabled('omnisearch') ? 'omnisearch:show-modal' : 'global-search:open'));
     for (const name of this.plugin.settings.shortcuts) {
