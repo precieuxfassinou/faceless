@@ -476,7 +476,10 @@ class FacelessSettingTab extends PluginSettingTab {
     if (key === 'colorFolderNames') this.plugin.icons.applyAll();
   }
 
-  display() {
+  display() { this.renderLegacy(); }
+
+  /** Settings page for Obsidian versions before 1.13 (no declarative settings). */
+  private renderLegacy() {
     const { containerEl } = this;
     containerEl.empty();
     const s = this.plugin.settings;
@@ -498,7 +501,7 @@ class FacelessSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName(l.home).setHeading();
     new Setting(containerEl).setName(l.language).setDesc(l.languageDesc).addDropdown(d => d
       .addOption('auto', l.auto).addOption('fr', 'Français').addOption('en', 'English').setValue(s.language)
-      .onChange(async v => { s.language = v as FacelessSettings['language']; setLang(v === 'auto' ? obsidianLang() : v as Lang); await save(); this.display(); }));
+      .onChange(async v => { s.language = v as FacelessSettings['language']; setLang(v === 'auto' ? obsidianLang() : v as Lang); await save(); this.renderLegacy(); }));
     new Setting(containerEl).setName(l.startup).setDesc(l.startupDesc)
       .addToggle(c => c.setValue(s.openOnStartup).onChange(async v => { s.openOnStartup = v; await save(); }));
     text(l.journal, l.journalDesc, () => s.briefingFolder, v => { s.briefingFolder = v; });
@@ -552,8 +555,8 @@ class FacelessSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName(l.colorNames)
       .addToggle(c => c.setValue(s.colorFolderNames).onChange(async v => { s.colorFolderNames = v; await save(); this.plugin.icons.applyAll(); }));
     new Setting(containerEl).setName(l.manual).setDesc(l.manualDesc(Object.keys(s.iconOverrides).length))
-      .addButton(b => b.setButtonText(l.resetIcons).onClick(async () => { s.iconOverrides = {}; await save(); this.plugin.icons.applyAll(); this.display(); }));
+      .addButton(b => b.setButtonText(l.resetIcons).onClick(async () => { s.iconOverrides = {}; await save(); this.plugin.icons.applyAll(); this.renderLegacy(); }));
     new Setting(containerEl).setName(l.reread).setDesc(l.rereadDesc(Object.keys(s.resurfaced).length))
-      .addButton(b => b.setButtonText(l.clear).onClick(async () => { s.resurfaced = {}; await save(); this.display(); }));
+      .addButton(b => b.setButtonText(l.clear).onClick(async () => { s.resurfaced = {}; await save(); this.renderLegacy(); }));
   }
 }

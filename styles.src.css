@@ -257,7 +257,7 @@ body.fl-skin-claudian .claudian-message-content code,
 body.fl-skin-claudian .claudian-message-timestamp,
 body.fl-skin-claudian .claudian-input-info-row { font-family: var(--fl-mono); }
 body.fl-skin-claudian .claudian-message-content a,
-body.fl-skin-claudian .claudian-message-content .internal-link { color: var(--fl-ice); text-decoration-color: var(--fl-ice-soft); }
+body.fl-skin-claudian .claudian-message-content .internal-link { color: var(--fl-ice); }
 body.fl-skin-claudian .claudian-input-wrapper {
   --claudian-input-wrapper-radius: 0px;
   --claudian-input-wrapper-border-color: var(--fl-line-strong);
